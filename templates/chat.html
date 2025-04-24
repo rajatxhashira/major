@@ -1,0 +1,202 @@
+{% extends 'layout.html' %}
+
+{% block head_content%}
+
+<meta property="og:description" content="" />
+<title> Kind👁</title>
+<script>
+    is_home = true; 
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex">
+  <!-- Sidebar -->
+  <div class="p-3">
+    <h5 class="mb-3">Previous Chats</h5>
+    <ul class="list-group">
+      <li class="list-group-item">
+        <a href="/chat" class="text-decoration-none">New Chat</a>
+      </li>
+      {% for chat in previous_chats %}
+        <li class="list-group-item">
+          <a href="/chat/{{ chat }}" class="text-decoration-none">{{ chat }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Main Chat Area -->
+  <div class="container flex-grow-1">
+    <div class="chat-container text-center">
+      <div id="chat-box" class="mb-3 scrollable_list"></div>
+      <form id="input-form" class="d-flex">
+        <textarea type="text" id="message-input" class="form-control me-2" placeholder="Type your message..." required ></textarea>
+        <button type="submit" class="btn btn-primary" id="send_button">Send</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+    const chatBox = document.getElementById('chat-box');
+    const inputForm = document.getElementById('input-form');
+    const messageInput = document.getElementById('message-input');
+
+    document.addEventListener('DOMContentLoaded', function() {
+      // Check if the browser supports speech synthesis
+      const voices = speechSynthesis.getVoices();
+      var chats = {{ chat|tojson}};
+      if(chats){
+        for(let i=0;i<chats.length;i++){
+          add_user_message(chats[i][2]);
+          add_bot_message(chats[i][3]);
+          const chat_id = chats[i][0];
+        }
+      }
+      
+    });
+
+    function cleanup(message){
+      // remove the * or _ from the message
+      message = message.replace(/[*_]/g, '');
+      // remove the @ from the message
+      message = message.replace(/@/g, '');
+      // remove the # from the message
+      message = message.replace(/#/g, '');
+      // remove the $ from the message
+      message = message.replace(/\$/g, '');
+      // remove the % from the message
+      message = message.replace(/%/g, '');
+      // remove the ^ from the message
+      message = message.replace(/\^/g, '');
+      // remove the & from the message
+      message = message.replace(/&/g, '');
+      // remove the * from the message
+      message = message.replace(/\*/g, '');
+      message = message.replace("e.g.", "example");
+      message = message.replace("i.e", "that is");
+      return message;
+    }
+    function fun(message) {
+      console.log("Function called with message:", message);
+      var chat_id = window.location.pathname.split('/').pop();
+      if(chat_id == "chat"){
+        chat_id = null;
+      }
+      fetch('/process_message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ message: message, chat_id: chat_id })
+      })
+        .then(response => response.json())
+        .then(data => {
+            var loadingElem = document.getElementById("loading-indicator");
+            if (loadingElem) {
+                loadingElem.remove(); // Remove the loading indicator
+            }
+          console.log(data);
+          var chat_id = data.chat_id;
+          // if the url is not in /chat/<chat_id> then change it 
+          if (window.location.pathname !== "/chat/" + chat_id) {
+              window.history.pushState({}, '', "/chat/" + chat_id);
+          }
+          // if the chat_id is not in the previous_chats list then add it to the list
+          var utterance = new SpeechSynthesisUtterance(cleanup(data.message));  
+          const voices = speechSynthesis.getVoices();
+          const avaVoice = voices.find(voice => voice.name.toLowerCase().includes("ava"));
+          if(avaVoice){
+            utterance.voice = avaVoice;
+          }
+          utterance.lang = "en-US";
+
+          const responseElem = document.createElement('div');
+          responseElem.textContent = "Kind👁: ";
+          responseElem.className = "bot";
+          var is_dark_theme = document.body.classList.contains('dark-theme');
+          if (is_dark_theme) {
+            responseElem.classList.add("dark-theme");
+          }
+          chatBox.appendChild(responseElem);
+
+          let index = 0;
+          var message = data.message;
+          // split the message into words
+          const typingInterval = setInterval(() => {
+              if (index < data.message.length) {
+                  responseElem.textContent += data.message[index];
+                  index++;
+              } else {
+                  clearInterval(typingInterval);
+              }
+          }, 15);
+          // replace the send button to stop button
+          const sendButton = document.getElementById('send_button');
+          sendButton.innerHTML = "⏹";
+          sendButton.classList.remove("btn-primary");
+          sendButton.classList.add("btn-danger");
+          sendButton.addEventListener('click', function() {
+              clearInterval(typingInterval);
+              responseElem.textContent = "Kind👁: " + data.message;
+              sendButton.innerHTML = "Send";
+              sendButton.classList.remove("btn-danger");
+              sendButton.classList.add("btn-primary");
+              speechSynthesis.cancel(); // Stop the speech synthesis
+              sendButton.removeEventListener('click', arguments.callee); // Remove the event listener to prevent multiple clicks
+          });
+          speechSynthesis.speak(utterance);
+          console.log(utterance.voice)
+          utterance.onend = function() {
+              sendButton.innerHTML = "Send";
+              sendButton.classList.remove("btn-danger");
+              sendButton.classList.add("btn-primary");
+              sendButton.removeEventListener('click', arguments.callee); // Remove the event listener to prevent multiple clicks
+          };
+          chatBox.scrollTop = chatBox.scrollHeight;
+        });
+    }
+
+    function add_user_message(message) {
+      const messageElem = document.createElement('div');
+      messageElem.textContent = "You: " + message;
+      messageElem.className = "user";
+      var is_dark_theme = document.body.classList.contains('dark-theme');
+      if (is_dark_theme) {
+        messageElem.classList.add("dark-theme");
+      }
+      chatBox.appendChild(messageElem);
+    }
+    function add_bot_message(message) {
+      const messageElem = document.createElement('div');
+      messageElem.textContent = "Kind👁: " + message;
+      messageElem.className = "bot";
+      var is_dark_theme = document.body.classList.contains('dark-theme');
+      if (is_dark_theme) {
+        messageElem.classList.add("dark-theme");
+      }
+      chatBox.appendChild(messageElem);
+    }
+
+    inputForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const message = messageInput.value.trim();
+      if (message !== '') {
+        add_user_message(message);
+        messageInput.value = '';
+        const loadingElem = document.createElement('div');
+        loadingElem.id = "loading-indicator";
+        loadingElem.textContent = "Kind👁 is typing..."
+        loadingElem.className = "bot";
+        var is_dark_theme = document.body.classList.contains('dark-theme');
+        if (is_dark_theme) {
+          loadingElem.classList.add("dark-theme");
+        }
+        chatBox.appendChild(loadingElem);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        fun(message);
+      }
+    });
+</script>
+{% endblock %}
