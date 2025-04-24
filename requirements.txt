@@ -3,4 +3,3 @@ flask-login
 ollama
 flask-cors
 gunicorn
-sqlite3
